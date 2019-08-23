@@ -1,14 +1,44 @@
-{% from "postgres/map.jinja" import postgres with context %}
+{%- from tpldir + "/map.jinja" import postgres with context -%}
+{%- from tpldir + "/macros.jinja" import format_kwargs with context -%}
 
-{% if grains['os_family'] == 'Debian' %}
-install-postgresql-repo:
+{%- if 'pkg_repo' in postgres -%}
+
+  {%- if postgres.use_upstream_repo == true -%}
+
+    {%- if postgres.add_profile -%}
+postgresql-profile:
+  file.managed:
+    - name: /etc/profile.d/postgres.sh
+    - user: root
+    - group: root
+    - mode: 644
+    - template: jinja
+    - source: salt://postgres/templates/postgres.sh.j2
+    - defaults:
+        bin_dir: {{ postgres.bin_dir }}
+    {%- endif %}
+# Add upstream repository for your distro
+postgresql-repo:
   pkgrepo.managed:
-    - humanname: PostgreSQL Official Repository
-    - name: {{ postgres.pkg_repo }} {{ postgres.version }}
-    - keyid: B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8
-    - keyserver: keyserver.ubuntu.com
-    - file: {{ postgres.pkg_repo_file }}
-    - require_in:
-      - pkg: install-postgresql
-{% endif %}
+    {{- format_kwargs(postgres.pkg_repo) }}
 
+  {%- else -%}
+
+# Remove the repo configuration (and GnuPG key) as requested
+postgresql-repo:
+  pkgrepo.absent:
+    - name: {{ postgres.pkg_repo.name }}
+    {%- if 'pkg_repo_keyid' in postgres %}
+    - keyid: {{ postgres.pkg_repo_keyid }}
+    {%- endif %}
+
+  {%- endif -%}
+
+{%- elif grains.os not in ('Windows', 'MacOS',) %}
+
+postgresql-repo:
+  test.show_notification:
+    - text: |
+        PostgreSQL does not provide package repository for {{ grains['osfinger'] }}
+
+{%- endif %}
